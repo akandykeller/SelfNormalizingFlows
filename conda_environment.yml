@@ -1,0 +1,13 @@
+name: snf
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.7
+  - torchvision=0.8.1
+  - cudatoolkit=11.0
+  - pytorch=1.7.0
+  - cython
+  - matplotlib
+  - scikit-learn
