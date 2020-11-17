@@ -1,5 +1,5 @@
 # Self Normalizing Flows
-*Paper*: [Self_Normalizing_Flows.pdf](https://akandykeller.github.io/papers/Self_Normalizing_Flows.pdf)
+*Paper*: https://arxiv.org/abs/2011.07248
 
 *Blog Post*: http://keller.org/research/2020-10-21-self-normalizing-flows/
 
