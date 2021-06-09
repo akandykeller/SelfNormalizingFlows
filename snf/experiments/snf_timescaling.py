@@ -75,26 +75,7 @@ def run_timing_experiment(name, snf_name, config, sz, m, results):
     return results
 
 def main():
-    image_sizes = [(1, 5, 5),
-                   (1, 10, 10),
-                   (1, 12, 12),
-                   (1, 14, 14),
-                   (1, 20, 20),
-                   (1, 24, 24),
-                   (1, 28, 28),
-                   (1, 32, 32),
-                   (1, 36, 36),
-                   (1, 40, 40),
-                   (1, 45, 45),
-                   (1, 50, 50),
-                   (1, 53, 53),
-                   (1, 55, 55),
-                   (1, 57, 57),
-                   (1, 60, 60),
-                   (1, 61, 61),
-                   (1, 62, 62), 
-                   (1, 63, 63)
-                   ]
+    image_sizes = [(1, x*32, 1) for x in range(1, 130, 3)]
     model_type = ['fc', 'conv']
     self_normalized = [True, False]
 
@@ -123,7 +104,7 @@ def main():
                     'sample_epochs': 1000,
                     'log_interval': 10000,
                     'lr': 1e-4,
-                    'batch_size': 100,
+                    'batch_size': 128,
                     'modified_grad': snf,
                     'add_recon_grad': snf,
                     'sym_recon_grad': False,

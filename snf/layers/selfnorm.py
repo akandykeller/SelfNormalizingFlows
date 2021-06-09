@@ -1,6 +1,12 @@
 from functools import lru_cache
 from itertools import product
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import wandb
+
 import math
 import numpy as np
 import torch
@@ -69,11 +75,11 @@ class SelfNormConvFunc(autograd.Function):
                                                     groups, benchmark,
                                                     deterministic)
         Wx = output - bw.view(1, -1, 1, 1) if bw is not None else output
-        neg_delta_x_Wxt = conv2d_backward.backward_weight(W.shape, -1*input_grad, Wx,
+        neg_delta_x_Wxt = conv2d_backward.backward_weight(R.shape, -1*input_grad, Wx,
                                                           padding, stride, dilation, 
                                                           groups, benchmark, 
                                                           deterministic)
-        weight_grad_inv = (neg_delta_x_Wxt + flip_kernel(W) * multiple) / 2.0
+        weight_grad_inv = (neg_delta_x_Wxt + flip_kernel(W) * flip_kernel(multiple)) / 2.0
 
         if bw is not None:
             # Sum over all except output channel
@@ -101,7 +107,9 @@ class SelfNormConv(ModifiedGradFlowLayer):
                  groups=1,
                  sym_recon_grad=False,
                  only_R_recon=False,
-                 recon_loss_weight=1.0):
+                 recon_loss_weight=1.0,
+                 recon_loss_lr=0.0,
+                 recon_alpha=0.9):
 
         super().__init__()
         self.kernel_size = _pair(kernel_size)
@@ -114,6 +122,9 @@ class SelfNormConv(ModifiedGradFlowLayer):
         self.sym_recon_grad = sym_recon_grad
         self.only_R_recon = only_R_recon
         self.recon_loss_weight = recon_loss_weight
+        self.recon_loss_lr = recon_loss_lr
+        self.recon_loss_ema = None
+        self.alpha = recon_alpha
         self.use_bias = bias
 
         self.reset_parameters()
@@ -173,19 +184,16 @@ class SelfNormConv(ModifiedGradFlowLayer):
                             self.padding, self.dilation, self.groups)
         return rev
 
-    def add_recon_grad(self):
+    def add_recon_grad(self, recon_loss_weight_update=None):
         # Compute ||x - RWx||^2
         x = self.input.detach() # have to compute z again w/ detached x
         z = F.conv2d(x, self.weight_fwd, None, 
                 self.stride, self.padding, self.dilation, self.groups)
-        
         if self.only_R_recon:
             z = z.detach()
-
         x_hat = F.conv2d(z, self.weight_inv, None, self.stride, 
                          self.padding, self.dilation, self.groups)
         recon_loss = (x - x_hat).pow(2).flatten(start_dim=1).sum(-1)
-        input_norm = x.pow(2).flatten(start_dim=1).sum(-1)
 
         # Compute ||z - WRz||^2
         if self.sym_recon_grad:
@@ -197,12 +205,28 @@ class SelfNormConv(ModifiedGradFlowLayer):
             recon_loss_sym = (zsym - z_hat_sym).pow(2).flatten(start_dim=1).sum(-1)
             recon_loss = (recon_loss + recon_loss_sym) / 2.0
 
-        recon_loss = self.recon_loss_weight * recon_loss.mean()
+        if recon_loss_weight_update is not None:
+            self.recon_loss_weight = recon_loss_weight_update
+
+        # Set NaN values to 0 for stability
+        recon_loss[recon_loss != recon_loss] = 0.0
+        recon_loss_weighted = self.recon_loss_weight * recon_loss.mean()
 
         # Using .backward call to add recon gradient
-        recon_loss.backward()
+        recon_loss_weighted.backward()
 
-        return recon_loss
+        # If using GECO (i.e. recon_loss_lr > 0.0) update recon_loss_weight from moving average
+        if self.recon_loss_lr > 0.0:
+            with torch.no_grad():
+                if self.recon_loss_ema is None:
+                    self.recon_loss_ema = recon_loss.mean()
+                else:
+                    self.recon_loss_ema = self.alpha * self.recon_loss_ema + (1 - self.alpha) * recon_loss.mean()
+                C_t = recon_loss.mean() + (self.recon_loss_ema - recon_loss.mean()).detach()
+                delta_rlw = torch.exp(self.recon_loss_lr * C_t)
+                self.recon_loss_weight = self.recon_loss_weight * delta_rlw
+
+        return recon_loss_weighted
 
     def sparse_toeplitz(self, input, context=None):
         if self.T_idxs is None or self.f_idxs is None:
@@ -221,6 +245,37 @@ class SelfNormConv(ModifiedGradFlowLayer):
             self.logabsdet_dirty = False
         return self.logabsdet.view(1).expand(len(input))
 
+    def plot_filters(self, layer_idx, max_s=10):
+        name = 'SNF_L{}_{}'
+
+        weights = {'fwd': self.weight_fwd.detach().cpu().numpy(),
+                   'inv': self.weight_inv.detach().cpu().numpy()}       
+        
+        c_out, c_in, h, w = weights['fwd'].shape
+        s = min(max_s, int(np.ceil(np.sqrt(c_out))))
+        
+        empy_weight = np.zeros_like(weights['fwd'][0,0,:,:])
+
+        for direction in ['fwd', 'inv']:
+            for c in range(c_in):
+                f, axarr = plt.subplots(s,s)
+                f.set_size_inches(7, 7)
+                for s_h in range(s):
+                    for s_w in range(s):
+                        w_idx = s_h * s + s_w
+                        if w_idx < c_out:
+                            img = axarr[s_h, s_w].imshow(weights[direction][w_idx, c, :, :], cmap='PuBu_r')
+                            axarr[s_h, s_w].get_xaxis().set_visible(False)
+                            axarr[s_h, s_w].get_yaxis().set_visible(False)
+                            f.colorbar(img, ax=axarr[s_h, s_w])
+                        else:
+                            img = axarr[s_h, s_w].imshow(empy_weight, cmap='PuBu_r')
+                            axarr[s_h, s_w].get_xaxis().set_visible(False)
+                            axarr[s_h, s_w].get_yaxis().set_visible(False)
+                            f.colorbar(img, ax=axarr[s_h, s_w])
+                # f.colorbar(img, ax=axarr.ravel().tolist())
+            wandb.log({name.format(layer_idx, direction): wandb.Image(plt)}, commit=True)
+            plt.close('all')
 
 class SelfNormFC(SelfNormConv):
 
@@ -233,8 +288,8 @@ class SelfNormFC(SelfNormConv):
         return output.view(-1, self.out_channels), ldj
 
     def reverse(self, input, context=None, compute_expensive=False):
-        input = input.view(-1, self.in_channels, 1, 1)
-       
+        input = input.view(-1, self.out_channels, 1, 1)
+        
         if self.bias_fwd is not None:
             input = input - self.bias_fwd.view(1, -1, 1, 1)
 
@@ -242,16 +297,18 @@ class SelfNormFC(SelfNormConv):
             # Use actual inverse
             rev = torch.matmul(self.weight_fwd[:,:,0,0].inverse(),
                                input.flatten(start_dim=1).unsqueeze(-1))
-            rev = rev.view(input.shape)
+            rev = rev.view(-1, self.in_channels)
         else:
             # Use approximate inverse
             rev = torch.matmul(self.weight_inv[:,:,0,0],
                                 input.flatten(start_dim=1).unsqueeze(-1))
-            rev = rev.view(input.shape)
+            rev = rev.view(-1, self.in_channels)
         return rev.view(-1, self.in_channels)
 
     @mark_expensive
     def logdet(self, input, context=None):
+        if self.in_channels != self.out_channels:
+            return torch.tensor(0.0).expand(len(input)).to(input.device)
         if self.logabsdet_dirty:
             self.logabsdet = torch.slogdet(self.weight_fwd[:,:,0,0])[1]
             self.logabsdet_dirty = False

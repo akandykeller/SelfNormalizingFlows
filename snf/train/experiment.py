@@ -15,16 +15,18 @@ default_config = {
         'name': None,
         'notes': None,
         'wandb': False,
-        'wandb_project': 'YOUR_PROJECT_NAME',
+        'wandb_project': 'YOU_PROJECT_NAME',
         'wandb_entity': 'YOUR_ENTITY_NAME',
         'log_timing': False,
         'eval_train': False,
         'max_eval_ex': float('inf'),
         'log_interval': 100,
         'sample_epochs': 10_000,
+        'vis_epochs': 10_000,
         'n_samples': 100,
         'sample_dir': 'samples',
         'epochs': 10_000,
+        'grad_clip_norm': None,
         'eval_epochs': 1,
         'lr': 1e-3,
         'warmup_epochs': 10,
@@ -48,7 +50,12 @@ class Experiment:
         try:
             self.data_shape = self.train_loader.dataset.dataset.data.shape[1:]
         except AttributeError:
-            self.data_shape = self.train_loader.dataset.dataset.tensors[0].shape[2:]
+            if type(train_loader.dataset.dataset) == torchvision.datasets.ImageFolder:
+                self.data_shape = train_loader.dataset.dataset[0][0].shape
+            else:
+                self.data_shape = self.train_loader.dataset.dataset.tensors[0].shape[2:]
+        self.to_bpd = lambda x: x / (torch.log(torch.tensor(2.0)) 
+                                     * torch.prod(torch.tensor(self.data_shape)))       
 
         self.config = default_config
         self.config.update(**kwargs)
@@ -87,21 +94,30 @@ class Experiment:
 
             if e % self.config['eval_epochs'] == 0:
                 if self.config['eval_train']:
-                    self.log('Train LogPx', self.eval_epoch(self.train_loader, e))
-                
+                    train_logpx = self.eval_epoch(self.train_loader, e)
+                    self.log('Train LogPx', train_logpx)
+                    self.log('Train BPD', self.to_bpd(train_logpx))      
+
                 val_logpx = self.eval_epoch(self.val_loader, e, split='Val')
                 self.log('Val LogPx', val_logpx)
+                self.log('Val BPD', self.to_bpd(val_logpx))
                 if val_logpx > self.summary['Best Val LogPx']:
                     self.update_summary('Best Val LogPx', val_logpx)
+                    self.update_summary('Best Val BPD', self.to_bpd(val_logpx))
                     test_logpx = self.eval_epoch(self.test_loader, e, split='Test')
                     self.log('Test LogPx', test_logpx)
+                    self.log('Test BPD', self.to_bpd(test_logpx))
                     self.update_summary('Test LogPx', test_logpx)
+                    self.update_summary('Test BPD', self.to_bpd(test_logpx))
 
                     # Checkpoint model
                     self.save()
 
             if e < 5 or e == 10 or e % self.config['sample_epochs'] == 0:
                 self.sample(e)
+
+            if e % self.config['vis_epochs'] == 0:
+                self.filter_vis()
 
             self.scheduler.step()
 
@@ -116,7 +132,8 @@ class Experiment:
 
     def get_loss(self, x):
         compute_expensive = not self.config['modified_grad']
-        lossval = -self.model(x, compute_expensive=compute_expensive)        
+        lossval = -self.model.log_prob(x, compute_expensive=compute_expensive)  
+        lossval[lossval != lossval] = 0.0 # Replace NaN's with 0      
         lossval = (lossval).sum() / len(x)
         return lossval
 
@@ -137,7 +154,6 @@ class Experiment:
             self.warmup_lr(epoch, num_batches)
             self.optimizer.zero_grad()
             x = x.float().to('cuda')
-            
             if self.config['log_timing']:
                 start = torch.cuda.Event(enable_timing=True)
                 end = torch.cuda.Event(enable_timing=True)
@@ -148,6 +164,10 @@ class Experiment:
 
             if self.config['add_recon_grad']:
                 total_recon_loss = self.model.add_recon_grad()
+ 
+            if self.config['grad_clip_norm'] is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 
+                                               self.config['grad_clip_norm'])
 
             self.optimizer.step()
 
@@ -220,8 +240,12 @@ class Experiment:
                         compute_expensive=compute_expensive,
                         also_true_inverse=self.config['sample_true_inv']
                         )
-            x_sample = x_sample.view(n, 1, *self.data_shape)
-            x_sample_trueinv = x_sample_trueinv.view(n, 1, *self.data_shape)
+            if len(self.data_shape) == 2:
+                x_sample = x_sample.view(n, 1, *self.data_shape)
+                x_sample_trueinv = x_sample_trueinv.view(n, 1, *self.data_shape)
+            else:
+                x_sample = x_sample
+                x_sample_trueinv = x_sample_trueinv
 
         os.makedirs(s_dir, exist_ok=True)
         torchvision.utils.save_image(
@@ -229,7 +253,7 @@ class Experiment:
             padding=2, normalize=False)
 
         if self.config['wandb']:
-            wandb.log({'Samples_Exact':  wandb.Image(s_path)})
+            wandb.log({'Samples_Approx_Inv':  wandb.Image(s_path)})
 
         if self.config['sample_true_inv']:
             s_true_inv_path = os.path.join(s_dir, f'{e}_trueinv.png')
@@ -238,8 +262,10 @@ class Experiment:
                         padding=2, normalize=False)            
 
             if self.config['wandb']:
-                wandb.log({'Samples_Exact_True_Inv':  wandb.Image(s_true_inv_path)})
+                wandb.log({'Samples_True_Inv':  wandb.Image(s_true_inv_path)})
 
+    def filter_vis(self):
+        self.model.plot_filters()
 
     def plot_recon(self, x, e, context=None):
         n = self.config['n_samples']

@@ -7,19 +7,14 @@
 #### Install requirements with Anaconda:
 `conda env create -f conda_environment.yml`
 
-#### Activate the conda environment
-`conda activate snf`
-
 #### Install snf package
-Install the snf package inside of your conda environment. This allows you to run experiments with the `snf` command. At the root of the project directory run (using your environment's pip):
+Install the snf package locally for development. This allows you to run experiments with the `snf` command. At the root of the project directory run:
 `pip install -e .`
-
-If you need help finding your environment's pip, try `which python`, which should point you to a directory such as `.../anaconda3/envs/snf/bin/` where it will be located.
 
 Note that this package requires Ninja to build the C++ extensions required to efficiently compute the Self-Normalizing Flow gradient, however this should be installed automatically with pytorch.
 
 #### (Optional) Setup Weights & Biases:
-This repository uses Weight & Biases for experiment tracking. By deafult this is set to off. However, if you would like to use this (highly recommended!) functionality, all you have to do is install weight & biases as follows, and then set `'wandb': True`,  `'wandb_project': YOUR_PROJECT_NAME`, and `'wandb_entity': YOUR_ENTITY_NAME` in the default experiment config at the top of [snf/train/experiment.py](https://github.com/akandykeller/SelfNormalizingFlows/blob/master/snf/train/experiment.py).
+This repository uses Weight & Biases for experiment tracking. By deafult this is set to off. However, if you would like to use this (highly recommended!) functionality, all you have to do is install weight & biases as follows, and then set `'wandb': True`,  `'wandb_project': YOUR_PROJECT_NAME`, and `'wandb_entity': YOUR_ENTITY_NAME` in the default experiment config at the top of snf/train/experiment.py.
 
 To install Weights & Biases follow the [quickstart guide here](https://docs.wandb.com/quickstart), or, simply run `pip install wandb` (with the pip associated to your conda environment), followed by: `wandb login`
 
@@ -36,19 +31,25 @@ To rerun the experiments from table 1, you can run the following commands:
 - `snf --name 'conv1x1_glow_mnist'`
 - `snf --name 'selfnorm_glow_mnist'`
 
-To recreate the results of figure 3, run:
+To rerun the experiments from table 2:
+- `snf --name 'conv1x1_glow_cifar'`
+- `snf --name 'selfnorm_glow_cifar'`
+- `snf --name 'conv1x1_glow_imagenet'`
+- `snf --name 'selfnorm_glow_imagenet'`
+
+To recreate the results of figure 4, run:
 - `snf --name 'snf_timescaling'`
 
-To run the 2d density modeling experiment run:
-- `snf --name 'toydensity'`
+To recreate the results of Table A.5 (using improved constrained optimization), run:
+- `snf --name 'geco_selfnorm_glow_mnist`
 
 ## Basics of the framework
-- All models are built using the `FlowSequential` module (see [snf/layers/flowsequential.py](https://github.com/akandykeller/SelfNormalizingFlows/blob/master/snf/layers/flowsequential.py))
+- All models are built using the `FlowSequential` module (see snf/layers/flowsequential.py)
     - This module iterates through a list of `FlowLayer` or `ModifiedGradFlowLayer` modules, repeatedly transforming the input, while simultaneously accumulating the log-determinant of the jacobian of each transformation along the way.
     - Ultimately, this layer returns the total normalized log-probability of input by summing the log-probability of the transformed input under the base distribuiton, and the accumulated sum of log jacobian determinants (i.e. using the change of variables rule).
-- The `Experiment` class (see [snf/train/experiment.py](https://github.com/akandykeller/SelfNormalizingFlows/blob/master/snf/train/experiment.py)) handles running the training iterations, evaluation, sampling, and model saving & loading.
+- The `Experiment` class (see snf/train/experiment.py) handles running the training iterations, evaluation, sampling, and model saving & loading.
 - All experiments can be found in `snf/experiments/`, and require the specification of a model, optimizer, dataset, and config dictionary. See below for the currently implemented options for the config.  
-- All layer implementations can be found in `snf/layers/` including the self-normalizing layer found at [snf/layers/selfnorm.py](https://github.com/akandykeller/SelfNormalizingFlows/blob/master/snf/layers/selfnorm.py)
+- All layer implementations can be found in `snf/layers/` including the self-normalizing layer found at snf/layers/selfnorm.py
 
 ## Overview of Config options
 The configuration dictionary is mainly used to modify the training procedure specified in the Experiment class, but it can also be used to modify the model architecture if desired. A non-exhaustive list of config options and descriptions are given below, note that config options which modify model architecture may not have any effect if they are not explicitly incorporated in the `create_model()` function of the experiments. The default configuration options are specified at the top of the experiment file. The configuration dictionary passed to the Experiment class initalizer then overwrites these defaults if the key is present.
@@ -66,6 +67,7 @@ The configuration dictionary is mainly used to modify the training procedure spe
 - `'batch_size'`: *int*, number of samples per batch
 - `'recon_loss_weight'`: *float*, Value of $\lambda$ weight on reconstruction gradient. 
 - `'sym_recon_grad'`: Bool, if True, and `add_recon_grad` is true, use a symmetric version of the reconstruction loss for increased stability.
+- `'grad_clip_norm'`: *float*, maximum magnitude which to scale gradients to if greater than.
 
 #### Model Architecutre Options
 - `'activation'`: *str*: Name of activation function to use for FC and CNN models (one of `SLR, LLR, Spline, SELU`).

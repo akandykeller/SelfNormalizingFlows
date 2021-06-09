@@ -18,7 +18,6 @@ activations = {
     'SLR': lambda size: SmoothLeakyRelu(alpha=0.3),
     'LLR': lambda size: LearnableLeakyRelu(),
     'Spline': lambda size: SplineActivation(size, tail_bound=10, individual_weights=True),
-    'SELU': lambda size: SELU(alpha=1.6733, lamb=1.0507)
 }
 
 def create_model(num_layers=2, sym_recon_grad=False, 
@@ -50,7 +49,7 @@ def create_model(num_layers=2, sym_recon_grad=False,
 
 def main():
     config = {
-        'name': '2L FC Exact SLR0.3 MNIST (1e-4)',
+        'name': '2L FC Exact MNIST',
         'eval_epochs': 1,
         'sample_epochs': 1,
         'log_interval': 100,
@@ -62,7 +61,7 @@ def main():
         'sym_recon_grad': False,
         'only_R_recon': False,
         'activation': 'SLR',
-        'recon_loss_weight': 1,
+        'recon_loss_weight': 0.0,
         'sample_true_inv': False,
         'plot_recon': False,
         'log_timing': True

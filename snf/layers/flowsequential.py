@@ -18,9 +18,6 @@ class FlowSequential(nn.Module):
         yield from self.sequence_modules
 
     def forward(self, input, context=None, compute_expensive=False):
-        return self.log_prob(input, context, compute_expensive)
-
-    def log_prob(self, input, context=None, compute_expensive=True):
         logdet = 0
         for idx, module in enumerate(self):
             if isinstance(module, ModifiedGradFlowLayer):
@@ -37,7 +34,10 @@ class FlowSequential(nn.Module):
 
         logprob = self.base_distribution.log_prob(input)
         
-        return logprob + logdet
+        return output, logprob + logdet
+
+    def log_prob(self, input, context=None, compute_expensive=True):
+        return self.forward(input, context, compute_expensive)[1]
 
     def cheap_unnormed_log_prob(self, input, context=None):
         return self.log_prob(input, context=context, compute_expensive=False)
@@ -71,11 +71,11 @@ class FlowSequential(nn.Module):
         logprob = self.base_distribution.log_prob(input)
         return logprob + logdet
 
-    def add_recon_grad(self):
+    def add_recon_grad(self, recon_loss_weight_update=None):
         total_recon_loss = 0.0
 
         for idx, conv in enumerate(self.selfnorm_modules()):
-            layer_recon_loss = conv.add_recon_grad()
+            layer_recon_loss = conv.add_recon_grad(recon_loss_weight_update)
             total_recon_loss += layer_recon_loss
         return total_recon_loss
 
@@ -129,3 +129,8 @@ class FlowSequential(nn.Module):
             input = output
         
         return input
+
+    def plot_filters(self):
+        for idx, conv in enumerate(self.selfnorm_modules()):
+            conv.plot_filters(idx)
+        return

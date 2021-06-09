@@ -1,4 +1,5 @@
 import math
+import wandb
 import os
 import numpy as np
 from functools import partial
@@ -25,7 +26,7 @@ def sample_2d_data(dataset, n_samples):
 
     elif dataset == '1gaussian':
         m = MultivariateNormal(torch.zeros(2), torch.eye(2))
-        data = m.rsample(torch.Size([n_samples, 1, 1]))
+        data = m.rsample(torch.Size([n_samples]))
         return data
 
     elif dataset == 'sine':
@@ -132,9 +133,7 @@ def sample_2d_data(dataset, n_samples):
         raise RuntimeError('Invalid `dataset` to sample from.')
 
 
-@torch.no_grad()
-def plot(model, potential_or_sampling_fn, name, device, dist_name, dir):
-    n_pts = 1000
+def plot(model, potential_or_sampling_fn, name, device, dist_name, dir, n_pts=1000):
     if dist_name == 'smile':
         range_lim = [-6, 6]
     elif dist_name == 'moons':
@@ -158,9 +157,13 @@ def plot(model, potential_or_sampling_fn, name, device, dist_name, dir):
 
     # save
     if not os.path.exists(dir):
+        print(f'Making dir: {dir}')
         os.makedirs(dir)
-    plt.savefig('{}/vis_{}.png'.format(dir, name))
+    fname = '{}/vis_{}.png'.format(dir, name)
+    plt.savefig(fname)
+    wandb.log({'Density Plot':  wandb.Image(plt)})
     plt.close()
+    return fname
 
 def setup_grid(range_lim, n_pts, device):
     x = torch.linspace(range_lim[0], range_lim[1], n_pts)
@@ -190,12 +193,19 @@ def plot_fwd_flow_density(model, ax, test_grid, n_pts, batch_size):
     """ plots square grid and flow density """
     xx, yy, zz = test_grid
     data = zz.reshape(-1, 2)
+    
+    n_batches = data.shape[0] // batch_size
+    probs = []
 
-    log_prob = model.log_prob(data).cpu().double() 
-    prob = torch.exp(log_prob)
+    for b in range(n_batches):
+        batch = data[b*batch_size:(b+1)*batch_size]
+        log_prob = model.log_prob(batch).cpu().double() 
+        prob = torch.exp(log_prob).detach()
+        probs.append(prob)
 
+    probs = torch.cat(probs)
     # plot
-    ax.pcolormesh(xx, yy, prob.reshape((n_pts,n_pts)))
+    ax.pcolormesh(xx, yy, probs.reshape((n_pts,n_pts)))
     ax.set_facecolor(plt.cm.jet(0.))
     ax.set_title('Predicted density')
 
@@ -215,6 +225,6 @@ class ToyDensity(Dataset):
     def __getitem__(self, i):
         return self.dataset[i], torch.zeros(self.label_size)
 
-    def plot(self, model, name, device, dir):
+    def plot(self, model, name, device, dir, n_pts=1000):
         plot(model, self.sample_function, name, device,
-             dist_name=self.name, dir=dir)
+             dist_name=self.name, dir=dir, n_pts=n_pts)

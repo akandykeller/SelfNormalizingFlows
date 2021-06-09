@@ -15,7 +15,6 @@ class ActNorm(FlowActivationLayer):
         reduce_dims = [i for i in range(len(input.size())) if i != 1]
 
         if not self.initialized:
-            print('initializing actnorm')
             with torch.no_grad():
                 mean = torch.mean(input, dim=reduce_dims)
                 log_stddev = torch.log(torch.std(input, dim=reduce_dims) + 1e-8)
@@ -50,6 +49,9 @@ class ActNorm(FlowActivationLayer):
 
         output = input * torch.exp(log_scale) + translation
         return output
+
+    def act_prime(self, input, context=None):
+        return torch.exp(-self.log_scale)
 
     def logdet(self, input, context=None):
         B = input.size(0)

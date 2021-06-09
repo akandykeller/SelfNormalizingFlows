@@ -3,10 +3,16 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from snf.train.datatransforms import ToTensorNoNorm
 
-def load_data(**kwargs):
-    transform = transforms.Compose([
-        ToTensorNoNorm()
-    ])
+def load_data(data_aug=False, **kwargs):
+    transform_list = []
+
+    if data_aug:
+        transform_list.append(transforms.Pad(1, padding_mode='reflect'))
+        transform_list.append(transforms.RandomCrop(28))
+
+    transform_list.append(ToTensorNoNorm())
+
+    transform = transforms.Compose(transform_list)
     trainvalset = datasets.MNIST('../data',
                                  train=True,
                                  download=True,

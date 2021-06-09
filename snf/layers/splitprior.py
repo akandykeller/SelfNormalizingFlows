@@ -5,12 +5,12 @@ from .coupling import Coupling
 
 
 class SplitPrior(FlowLayer):
-    def __init__(self, input_size, distribution):
+    def __init__(self, input_size, distribution, width=512):
         super().__init__()
         assert len(input_size) == 3
         self.n_channels = input_size[0]
 
-        self.transform = Coupling(input_size)
+        self.transform = Coupling(input_size, width=width)
 
         self.base = distribution(
             (self.n_channels // 2, input_size[1], input_size[2]))

@@ -6,7 +6,7 @@ from snf.layers import Dequantization, Normalization
 from snf.layers.distributions.uniform import UniformDistribution
 from snf.layers.flowsequential import FlowSequential
 from snf.layers.selfnorm import SelfNormConv
-from snf.layers.activations import SmoothLeakyRelu, SplineActivation, LearnableLeakyRelu, Identity
+from snf.layers.activations import SmoothLeakyRelu, SplineActivation, Identity
 from snf.layers.squeeze import Squeeze
 from snf.layers.transforms import LogitTransform
 from snf.train.losses import NegativeGaussianLoss
@@ -15,12 +15,10 @@ from snf.datasets.mnist import load_data
 
 activations = {
     'SLR':lambda size: SmoothLeakyRelu(alpha=0.3),
-    'LLR': lambda size: LearnableLeakyRelu(),
     'Spline': lambda size: SplineActivation(size, tail_bound=10, individual_weights=True),
-    'SELU': lambda size: SELU(alpha=1.6733, lamb=1.0507)
 }
 
-def create_model(num_layers=100, sym_recon_grad=False, 
+def create_model(num_layers=9, sym_recon_grad=False, 
                  activation='Spline', recon_loss_weight=1.0,
                  num_blocks=3):
     block_size = int(num_layers / num_blocks)
@@ -60,7 +58,7 @@ def create_model(num_layers=100, sym_recon_grad=False,
 
 def main():
     config = {
-        'name': '9L Conv Exact Spline MNIST (lr1e-3)',
+        'name': '9L Conv Exact Spline MNIST',
         'eval_epochs': 1,
         'sample_epochs': 1,
         'log_interval': 100,
@@ -72,7 +70,7 @@ def main():
         'add_recon_grad': False,
         'sym_recon_grad': False,
         'activation': 'Spline',
-        'recon_loss_weight': 1.0,
+        'recon_loss_weight': 0.0,
         'log_timing': True
     }
 

@@ -54,6 +54,31 @@ class SmoothLeakyRelu(FlowActivationLayer):
         return newton_raphson_inverse(self, y, x0, context)
 
 
+class LeakyRelu(FlowActivationLayer):
+
+    def __init__(self, alpha=0.1):
+        super().__init__()
+        self.alpha = alpha
+
+    def activation(self, input, context=None):
+        out = torch.where(input < 0, 
+                            self.alpha * input, 
+                            input)
+        return out
+
+    def act_prime(self, input, context=None):
+        derivative = torch.where(input < 0, 
+                                    self.alpha, 
+                                    1.0)
+        return derivative
+
+    def reverse(self, input, context=None):
+        out = torch.where(input < 0, 
+                            input / self.alpha, 
+                            input)
+        return out
+
+
 class LearnableLeakyRelu(FlowActivationLayer):
 
     def __init__(self):

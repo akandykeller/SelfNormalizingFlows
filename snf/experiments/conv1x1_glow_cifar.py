@@ -13,20 +13,19 @@ from snf.layers.transforms import LogitTransform
 from snf.layers.coupling import Coupling
 from snf.train.losses import NegativeGaussianLoss
 from snf.train.experiment import Experiment
-from snf.datasets.mnist import load_data
+from snf.datasets.cifar10 import load_data
 
-def create_model(num_blocks=2, block_size=16, sym_recon_grad=False, 
+def create_model(num_blocks=3, block_size=32, sym_recon_grad=False, 
                  actnorm=False, split_prior=False, recon_loss_weight=1.0):
+    current_size = (3, 32, 32)
 
     alpha = 1e-6
     layers = [
-        Dequantization(UniformDistribution(size=(1, 28, 28))),
+        Dequantization(UniformDistribution(size=current_size)),
         Normalization(translation=0, scale=256),
         Normalization(translation=-alpha, scale=1 / (1 - 2 * alpha)),
         LogitTransform(),
     ]
-
-    current_size = (1, 28, 28)
 
     for l in range(num_blocks):
         layers.append(Squeeze())
@@ -48,13 +47,13 @@ def create_model(num_blocks=2, block_size=16, sym_recon_grad=False,
 
 def main():
     config = {
-        'name': '2L-16K Glow Exact MNIST',
+        'name': '3L-32K Glow Exact CIFAR',
         'eval_epochs': 1,
         'sample_epochs': 1,
         'log_interval': 100,
         'lr': 1e-3,
-        'num_blocks': 2,
-        'block_size': 16,
+        'num_blocks': 3,
+        'block_size': 32,
         'batch_size': 100,
         'modified_grad': False,
         'add_recon_grad': False,
@@ -62,12 +61,14 @@ def main():
         'actnorm': True,
         'split_prior': True,
         'activation': 'None',
-        'recon_loss_weight': 1.0,
+        'recon_loss_weight': 0.0,
         'sample_true_inv': False,
-        'plot_recon': False
+        'plot_recon': False,
+        'grad_clip_norm': None,
+        'warmup_epochs': 10
     }
 
-    train_loader, val_loader, test_loader = load_data(data_aug=False, batch_size=config['batch_size'])
+    train_loader, val_loader, test_loader = load_data(data_aug=True, batch_size=config['batch_size'])
 
     model = create_model(num_blocks=config['num_blocks'],
                          block_size=config['block_size'], 

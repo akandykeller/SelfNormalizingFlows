@@ -17,7 +17,7 @@ from snf.datasets.mnist import load_data
 
 
 def create_model(num_blocks=2, block_size=16, sym_recon_grad=False, 
-                 actnorm=False, split_prior=False, recon_loss_weight=1.0):
+                 actnorm=False, split_prior=False, recon_loss_weight=100.0):
     alpha = 1e-6
     layers = [
         Dequantization(UniformDistribution(size=(1, 28, 28))),
@@ -52,7 +52,7 @@ def create_model(num_blocks=2, block_size=16, sym_recon_grad=False,
 
 def main():
     config = {
-        'name': '2L-16K Glow SNF(1x1) recon 100x MNIST (lr1e-3)',
+        'name': '2L-16K Glow SNF recon 100x MNIST',
         'eval_epochs': 1,
         'sample_epochs': 1,
         'log_interval': 100,
@@ -68,10 +68,11 @@ def main():
         'activation': 'None',
         'recon_loss_weight': 100.0,
         'sample_true_inv': True,
-        'plot_recon': True
+        'plot_recon': True,
+        'vis_epochs': 1
     }
 
-    train_loader, val_loader, test_loader = load_data(batch_size=config['batch_size'])
+    train_loader, val_loader, test_loader = load_data(data_aug=True, batch_size=config['batch_size'])
 
     model = create_model(num_blocks=config['num_blocks'],
                          block_size=config['block_size'], 

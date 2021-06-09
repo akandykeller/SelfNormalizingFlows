@@ -16,7 +16,7 @@ class NegativeLogLaplaceLoss(nn.Module):
 
 class NegativeGaussianLoss(nn.Module):
     """
-    Standard Normal Likelihood
+    Standard Normal Likelihood (negative)
     """
     def __init__(self, size):
         super().__init__()
@@ -39,3 +39,11 @@ class NegativeGaussianLoss(nn.Module):
         x = self.N.sample((n_samples,)).view(n_samples, *self.size)
         log_px = self.log_prob(x, context)
         return x, log_px
+
+
+class LogGaussian(NegativeGaussianLoss):
+    """
+    Standard Normal Likelihood 
+    """
+    def forward(self, input, context=None):
+        return self.log_prob(input, context).sum(-1)
