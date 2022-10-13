@@ -282,6 +282,25 @@ class SelfNormFC(SelfNormConv):
     def __init__(self, in_features, out_features, bias=True, **kwargs):
         super().__init__(in_features, out_features, (1, 1), bias, **kwargs)
 
+    def reset_parameters(self):
+        self.logabsdet_dirty = True
+        self.T_idxs, self.f_idxs = None, None
+
+        w_shape = (self.out_channels, self.in_channels, *self.kernel_size)
+        sq_c = min(self.out_channels, self.in_channels)
+        w_eye = nn.init.dirac_(torch.empty((sq_c, sq_c, *self.kernel_size)))
+        w_noise = nn.init.xavier_normal_(torch.empty(w_shape), gain=0.01)
+
+        w_noise[:sq_c, :sq_c, :, :] = w_eye
+        w_init = w_noise
+
+        self.weight_fwd = nn.Parameter(w_init)
+        self.weight_inv = nn.Parameter(flip_kernel(w_init))
+
+        b_small = torch.nn.init.normal_(torch.empty(self.out_channels), 
+                                        std=w_noise.std())
+        self.bias_fwd = nn.Parameter(b_small) if self.use_bias else None
+
     def forward(self, input, context=None, compute_expensive=False):
         input = input.view(-1, self.in_channels, 1, 1)
         output, ldj = super().forward(input, context, compute_expensive)
